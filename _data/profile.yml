@@ -1,0 +1,8 @@
+name: King_Universe
+intro: 记录生活，整理思考，探索未知。
+quote: "Perhaps one day, when I return, I’ll see things differently."
+github_url: https://github.com/kinguniverse527
+projects:
+  - name: 我的个人博客
+    description: 从一个简单的页面开始，慢慢搭建自己的互联网角落。
+    url: https://github.com/kinguniverse527/kinguniverse527.github.io

@@ -1,0 +1,11 @@
+---
+layout: default
+---
+<article class="reading">
+  <header class="post-header">
+    <a class="muted" href="{{ '/' | relative_url }}#writing">← 所有文章</a>
+    <h1>{{ page.title | escape }}</h1>
+    <time class="muted" datetime="{{ page.date | date_to_xmlschema }}">{{ page.date | date: '%Y.%m.%d' }}</time>
+  </header>
+  <div class="prose">{{ content }}</div>
+</article>

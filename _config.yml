@@ -1,0 +1,22 @@
+title: King_Universe
+description: 记录生活，整理思考，探索未知。
+url: "https://kinguniverse527.github.io"
+baseurl: ""
+lang: zh-CN
+timezone: Asia/Shanghai
+markdown: kramdown
+highlighter: rouge
+permalink: /posts/:year/:month/:day/:title/
+future: false
+defaults:
+  - scope:
+      path: ""
+      type: posts
+    values:
+      layout: post
+exclude:
+  - README.md
+  - Gemfile
+  - Gemfile.lock
+  - vendor
+  - admin
