@@ -1,0 +1,71 @@
+/*
+ * 全站文字设置：平时只需要改下面这个 :root 区域。
+ * 两套字体：日常文字 + 代码。四档字号：32 / 24 / 16 / 13。
+ * font-family 中的多个名称是备用顺序，不是同时使用多套设计。
+ */
+:root {
+  --font-text: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+  --font-code: Consolas, "Courier New", monospace;
+
+  --size-title: 32px;    /* 页面大标题 */
+  --size-heading: 24px;  /* 文章标题、栏目标题 */
+  --size-body: 16px;     /* 正文、导航、介绍 */
+  --size-note: 13px;     /* 日期、说明、页脚 */
+
+  --line-body: 1.75;     /* 正文行距 */
+  --line-heading: 1.35;  /* 标题行距 */
+}
+
+/* 默认：全站共用日常字体，正文普通粗细。 */
+body {
+  font-family: var(--font-text);
+  font-size: var(--size-body);
+  font-weight: 400;
+  line-height: var(--line-body);
+}
+
+button, input, textarea, select {
+  font: inherit;
+}
+
+/* ① 大标题：自动应用到 h1，也可以手动添加 text-title。 */
+h1, .text-title {
+  font-size: var(--size-title);
+  font-weight: 700;
+  line-height: var(--line-heading);
+}
+
+/* ② 标题：自动应用到 h2、h3 和站名。 */
+h2, h3, .brand, .text-heading {
+  font-size: var(--size-heading);
+  font-weight: 700;
+  line-height: var(--line-heading);
+}
+
+/* 正文内更低一级的小标题，用正文大小加粗。 */
+h4, h5, h6 {
+  font-size: var(--size-body);
+  font-weight: 700;
+  line-height: var(--line-heading);
+}
+
+/* ③ 正文：通常自动继承；需要时添加 text-body。 */
+.text-body {
+  font-size: var(--size-body);
+  font-weight: 400;
+  line-height: var(--line-body);
+}
+
+/* ④ 说明：日期、页脚，以及手动标注的 text-note。 */
+time, .eyebrow, .site-footer, .text-note {
+  font-size: var(--size-note);
+  font-weight: 400;
+  line-height: var(--line-body);
+}
+
+/* 只在代码内容中使用第二套字体。 */
+code, pre, kbd, samp {
+  font-family: var(--font-code);
+  font-size: var(--size-body);
+  line-height: var(--line-body);
+}
