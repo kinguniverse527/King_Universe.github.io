@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>写作室 · King_Universe</title>
+  <link rel="stylesheet" href="../assets/css/typography.css">
+  <link rel="stylesheet" href="editor.css">
+  <script defer src="vendor/editor-vendor.js"></script>
+  <script defer src="modules/article-files.js"></script>
+  <script defer src="modules/draft-store.js"></script>
+  <script defer src="modules/preview.js"></script>
+  <script defer src="modules/github-client.js"></script>
+  <script defer src="modules/github-panel.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <header class="app-header">
+    <a class="wordmark" href="https://kinguniverse527.github.io/" target="_blank" rel="noopener">King_Universe<span> / 写作室</span></a>
+    <span id="connection-badge" class="local-badge">未连接 GitHub</span>
+    <div class="header-actions">
+      <button id="connect-button" type="button">连接 GitHub</button>
+      <button id="import-button" type="button">打开文章</button>
+      <button id="save-button" type="button">保存草稿</button>
+      <button id="export-button" type="button">导出备份</button>
+      <button id="publish-button" class="primary" type="button" disabled>发布到博客 ↗</button>
+    </div>
+  </header>
+
+  <div class="workspace">
+    <aside class="draft-sidebar" aria-label="本机草稿">
+      <div class="sidebar-heading"><h2>草稿</h2><button id="new-button" class="icon-button" type="button" aria-label="新建文章">＋</button></div>
+      <p class="subtle">保存在当前浏览器</p>
+      <div id="draft-list" class="draft-list"></div>
+      <section class="remote-section" aria-labelledby="remote-heading">
+        <div class="sidebar-heading"><h2 id="remote-heading">GitHub 文章</h2><button id="refresh-remote" class="text-button" type="button" disabled>刷新</button></div>
+        <p id="remote-status" class="remote-note">连接后可读取、修改和删除文章。</p>
+        <div id="remote-list" class="draft-list"></div>
+      </section>
+      <button id="sample-button" class="text-button" type="button">打开示例文章</button>
+      <p class="sidebar-tip">先写下来。<br>排版交给博客模板。</p>
+      <button id="help-button" class="text-button" type="button">使用说明</button>
+    </aside>
+
+    <main class="composer">
+      <section class="article-origin" aria-label="文章发布状态">
+        <span id="article-origin">本机草稿 · 尚未关联线上文章</span>
+        <button id="delete-remote" class="text-button danger" type="button" hidden>删除线上文章</button>
+      </section>
+      <section class="metadata" aria-label="文章资料">
+        <label for="title">文章标题</label>
+        <input id="title" class="title-input" placeholder="给这篇文章起个名字" autocomplete="off" maxlength="200">
+        <div class="meta-row">
+          <div><label for="date">发布日期</label><input id="date" type="date" required></div>
+          <div class="slug-field"><label for="slug">网址短名 <span class="optional">可选</span></label><input id="slug" placeholder="例如 my-first-post" autocomplete="off" maxlength="100"></div>
+        </div>
+        <label for="description">摘要 <span class="optional">显示在首页文章列表</span></label>
+        <textarea id="description" rows="2" placeholder="用一两句话介绍这篇文章" maxlength="1000"></textarea>
+      </section>
+
+      <section class="body-section" aria-label="正文编辑">
+        <div class="body-heading"><h2>正文</h2><button id="source-toggle" class="text-button" type="button" aria-pressed="false">查看原文</button></div>
+        <div id="format-toolbar" class="toolbar" role="toolbar" aria-label="文字格式">
+          <select id="block-format" aria-label="段落样式"><option value="paragraph">正文</option><option value="h2">小标题</option><option value="h3">次级标题</option></select>
+          <button type="button" data-command="bold" aria-label="加粗" title="加粗 (Ctrl+B)"><strong>B</strong></button>
+          <button type="button" data-command="italic" aria-label="斜体" title="斜体 (Ctrl+I)"><em>I</em></button>
+          <button type="button" data-command="bulletList" aria-label="项目列表" title="项目列表">• 列表</button>
+          <button type="button" data-command="orderedList" aria-label="编号列表" title="编号列表">1. 列表</button>
+          <button type="button" data-command="blockquote" aria-label="引用" title="引用">“ 引用</button>
+          <button type="button" data-command="link" aria-label="添加链接" title="添加链接">链接</button>
+          <button id="image-button" type="button" aria-label="插入图片">图片</button>
+          <button type="button" data-command="codeBlock" aria-label="代码块" title="代码块">&lt;/&gt;</button>
+          <button type="button" data-command="undo" aria-label="撤销" title="撤销">↶</button>
+          <button type="button" data-command="redo" aria-label="重做" title="重做">↷</button>
+        </div>
+        <p id="source-notice" class="notice" hidden>原文模式会保留高级格式。预览不执行模板指令，正式效果以网站构建为准。</p>
+        <div id="editor" class="editor-surface"></div>
+        <textarea id="source-editor" class="source-editor" aria-label="文章原文" spellcheck="false" hidden></textarea>
+        <div class="editor-footer"><span id="word-count">0 字</span><span id="save-status" role="status">正在打开写作室…</span></div>
+      </section>
+      <p id="message" class="message" role="status" aria-live="polite"></p>
+      <p id="publish-result" class="message" hidden><span id="publish-result-text"></span> <a id="commit-link" target="_blank" rel="noopener">查看提交</a> · <a id="deploy-link" target="_blank" rel="noopener">查看部署进度</a></p>
+    </main>
+
+    <section class="preview-panel" aria-labelledby="preview-heading">
+      <div class="preview-toolbar"><h2 id="preview-heading">阅读预览</h2><div class="view-switch"><button id="desktop-view" type="button" aria-pressed="true">桌面</button><button id="mobile-view" type="button" aria-pressed="false">手机</button></div></div>
+      <p class="preview-note">共用博客字体和样式；特殊语法以正式构建为准。</p>
+      <div id="preview-stage" class="preview-stage"><iframe id="preview-frame" title="文章阅读预览" sandbox="allow-same-origin"></iframe></div>
+    </section>
+  </div>
+
+  <input id="article-file" type="file" accept=".md,.markdown,.zip" hidden>
+  <input id="image-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+  <dialog id="connect-dialog" aria-labelledby="connect-title">
+    <h2 id="connect-title">连接你的 GitHub 博客</h2>
+    <p>连接后可以直接读取文章、提交修改或删除文章。授权码只保留在本页内存中，刷新或关闭后需要重新连接。</p>
+    <form id="connect-form" class="connection-form">
+      <div class="connection-fields"><label>GitHub 用户名<input id="github-owner" value="kinguniverse527" autocomplete="off" required></label><label>博客仓库<input id="github-repo" value="kinguniverse527.github.io" autocomplete="off" required></label><label>发布分支<input id="github-branch" value="main" autocomplete="off" required></label></div>
+      <details id="token-guide" open>
+        <summary>第一次使用：创建仓库专用授权码</summary>
+        <ol><li>打开 <a id="create-token-link" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">GitHub 授权码设置</a>，按页面提示登录。</li><li>在 Repository access 选择 <strong>Only select repositories</strong>，只选你的博客仓库。</li><li>将 Repository permissions → <strong>Contents</strong> 设为 <strong>Read and write</strong>，选择有效期，然后生成。</li><li>把生成的授权码粘贴到下方。不要发到聊天或写入仓库文件。</li></ol>
+      </details>
+      <label for="github-token">仓库授权码（Fine-grained token）</label><input id="github-token" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_…" required>
+      <p id="connection-message" class="message" role="status"></p>
+      <div class="dialog-actions"><button id="disconnect-button" type="button" hidden>断开连接</button><button id="cancel-connect" type="button">关闭</button><button id="confirm-connect" type="submit" class="primary">连接仓库</button></div>
+    </form>
+  </dialog>
+  <dialog id="delete-dialog" aria-labelledby="delete-title">
+    <h2 id="delete-title">删除线上文章</h2>
+    <p id="delete-description"></p>
+    <p>将提交删除到 GitHub，网站完成部署后生效。本机草稿和图片保留。</p>
+    <div class="dialog-actions"><button id="cancel-delete" type="button">取消</button><button id="confirm-delete" class="danger-button" type="button">确认删除这篇文章</button></div>
+  </dialog>
+  <dialog id="help-dialog">
+    <h2>你的写作流程</h2>
+    <ol><li>连接 GitHub，打开左侧的线上文章，或点 ＋ 新建文章。</li><li>填写标题和摘要，用工具栏编辑正文，右侧查看排版。</li><li>草稿自动保存在当前浏览器；“保存草稿”不会发布。</li><li>点击“发布到博客”或“更新线上文章”，将文章和新图片一起提交。</li><li>等待 GitHub Pages 部署成功后，在博客查看。可以点击“查看部署进度”。</li></ol>
+    <p>无图片时导出一份文章文件；有图片时导出压缩包，保留其中的文件夹结构。以后可直接重新打开这些文件继续编辑。</p>
+    <p>浏览器草稿不是备份，清理浏览器数据或更换浏览器后可能无法找到。请及时导出重要文章。</p>
+    <p>“导出备份”仍可离线使用。连接采用仓库专用授权码，不是 OAuth 跳转登录；授权码不会写入草稿或项目文件。</p>
+    <p>若文章已在其他地方修改，系统会阻止覆盖；先导出备份，再重新打开线上版本。复杂模板、表格等内容会使用原文模式。</p>
+    <form method="dialog"><button class="primary">开始写作</button></form>
+  </dialog>
+</body>
+</html>
