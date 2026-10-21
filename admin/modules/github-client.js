@@ -115,6 +115,11 @@
     const prefix = '/repos/' + encodeURIComponent(owner) + '/' + encodeURIComponent(repo);
     const branchPath = branch.split('/').map(encodeURIComponent).join('/');
     const controllers = new Set();
+    // 缓存仅属于本次连接，按不可变的提交/文件 SHA 区分版本。
+    const snapshots = new Map();
+    const blobs = new Map();
+    const pendingBlobs = new Map();
+    let cachedBytes = 0;
     let disconnected = false;
     let writing = false;
 
@@ -177,7 +182,17 @@
     }
 
     async function snapshot(ref) {
+      if (disconnected) throw failure('GitHub 连接已断开，请重新连接。', 'DISCONNECTED');
       const headSha = ref === undefined ? await head() : sha(ref);
+      if (snapshots.has(headSha)) return snapshots.get(headSha);
+      const pending = loadSnapshot(headSha);
+      snapshots.set(headSha, pending);
+      if (snapshots.size > 8) snapshots.delete(snapshots.keys().next().value);
+      try { return await pending; }
+      catch (error) { if (snapshots.get(headSha) === pending) snapshots.delete(headSha); throw error; }
+    }
+
+    async function loadSnapshot(headSha) {
       const commit = await request('GET', prefix + '/git/commits/' + headSha);
       const treeSha = sha(commit?.tree?.sha);
       const tree = await request('GET', prefix + '/git/trees/' + treeSha + '?recursive=1');
@@ -211,7 +226,31 @@
     }
 
     async function readBlob(entry) {
-      const blob = await request('GET', prefix + '/git/blobs/' + sha(entry.sha));
+      if (disconnected) throw failure('GitHub 连接已断开，请重新连接。', 'DISCONNECTED');
+      const key = sha(entry.sha);
+      if (blobs.has(key)) {
+        const bytes = blobs.get(key);
+        blobs.delete(key); blobs.set(key, bytes);
+        return bytes.slice();
+      }
+      if (pendingBlobs.has(key)) return (await pendingBlobs.get(key)).slice();
+      const pending = loadBlob(key);
+      pendingBlobs.set(key, pending);
+      try {
+        const bytes = await pending;
+        if (!disconnected && bytes.length <= 8 * 1024 * 1024) {
+          blobs.set(key, bytes); cachedBytes += bytes.length;
+          while (cachedBytes > 48 * 1024 * 1024 || blobs.size > 128) {
+            const oldest = blobs.keys().next().value;
+            cachedBytes -= blobs.get(oldest).length; blobs.delete(oldest);
+          }
+        }
+        return bytes.slice();
+      } finally { pendingBlobs.delete(key); }
+    }
+
+    async function loadBlob(key) {
+      const blob = await request('GET', prefix + '/git/blobs/' + key);
       if (blob?.encoding !== 'base64' || typeof blob.content !== 'string') {
         throw failure('GitHub 文件编码不受支持，请从仓库检查原文件。', 'INVALID_RESPONSE');
       }
@@ -219,9 +258,7 @@
     }
 
     async function verify() {
-      const user = await request('GET', '/user');
-      const repository = await request('GET', prefix);
-      await head();
+      const [user, repository] = await Promise.all([request('GET', '/user'), request('GET', prefix), head()]);
       if (typeof user?.login !== 'string' || !user.login) throw failure('GitHub 用户信息不完整，请重新连接。', 'INVALID_RESPONSE');
       if (repository?.archived) throw failure('这个仓库已归档，不能发布新内容。', 'READ_ONLY');
       if (repository?.permissions?.push === false) throw failure('当前账号没有这个仓库的写入权限。', 'FORBIDDEN', 403);
@@ -239,7 +276,7 @@
         if (!path.startsWith('_posts/') || !/^\d{4}-\d{2}-\d{2}-.+\.(md|markdown)$/i.test(path.split('/').pop())) continue;
         postPath(path);
         fileEntry(state, path);
-        result.push({ path, name: path.split('/').pop(), sha: sha(entry.sha) });
+        result.push({ path, name: path.split('/').pop(), sha: sha(entry.sha), headSha: state.headSha });
       }
       return result.sort((left, right) => right.name.localeCompare(left.name));
     }
@@ -253,9 +290,9 @@
       return { bytes: await readBlob(entry), sha: sha(entry.sha) };
     }
 
-    async function readPost(path) {
+    async function readPost(path, ref) {
       postPath(path);
-      const state = await snapshot();
+      const state = await snapshot(ref);
       const entry = fileEntry(state, path);
       if (!entry) throw failure('远端没有找到这篇文章，请刷新文章列表。', 'NOT_FOUND', 404);
       const bytes = await readBlob(entry);
@@ -363,6 +400,7 @@
       disconnected = true;
       for (const controller of controllers) controller.abort();
       controllers.clear();
+      snapshots.clear(); blobs.clear(); pendingBlobs.clear(); cachedBytes = 0;
     }
 
     return Object.freeze({ verify, listPosts, readPost, getFile, publish, deletePost, disconnect });

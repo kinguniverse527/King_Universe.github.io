@@ -6,6 +6,13 @@
   const defaults = { owner: 'kinguniverse527', repo: 'kinguniverse527.github.io', branch: 'main' };
   const SETTINGS_KEY = 'king-universe-github-settings';
 
+  async function eachLimited(values, action) {
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(3, values.length) }, async () => {
+      while (next < values.length) await action(values[next++]);
+    }));
+  }
+
   function mount(editor) {
     let settings = { ...defaults };
     try {
@@ -17,6 +24,8 @@
     let busy = false;
     let pendingDelete = null;
     let items = [];
+    let listVersion = 0;
+    const titles = new Map();
     for (const key of Object.keys(defaults)) $('github-' + key).value = settings[key];
 
     const sameRepository = remote => remote && remote.owner === settings.owner && remote.repo === settings.repo && remote.branch === settings.branch;
@@ -51,20 +60,47 @@
       $('create-token-link').href = 'https://github.com/settings/personal-access-tokens/new?' + params;
     }
     async function refresh() {
+      const activeClient = client;
+      const version = ++listVersion;
       $('remote-status').textContent = '正在读取文章列表…';
-      items = await client.listPosts();
+      const listed = await activeClient.listPosts();
+      if (version !== listVersion || client !== activeClient) return;
+      items = listed;
       $('remote-list').replaceChildren();
+      const pending = [];
+      const summary = items.length ? settings.branch + ' · ' + items.length + ' 篇文章' : '还没有文章。点 ＋ 写第一篇，发布时会自动创建 _posts。';
       for (const item of items) {
         const button = document.createElement('button');
         button.type = 'button'; button.className = 'draft-item'; button.dataset.path = item.path;
         const name = document.createElement('strong');
-        name.textContent = item.name.slice(11).replace(/\.(md|markdown)$/i, '');
+        name.textContent = titles.get(item.sha) || '正在读取标题…';
         const date = document.createElement('small'); date.textContent = item.name.slice(0, 10);
-        button.title = item.path; button.append(name, date);
+        button.title = name.textContent + '\n' + item.path; button.append(name, date);
         button.addEventListener('click', () => perform(() => openPost(item.path)));
         $('remote-list').append(button);
+        if (!titles.has(item.sha)) pending.push({ item, name, button });
       }
-      $('remote-status').textContent = items.length ? settings.branch + ' · ' + items.length + ' 篇文章' : '还没有文章。点 ＋ 写第一篇，发布时会自动创建 _posts。';
+      $('remote-status').textContent = summary + (pending.length ? ' · 正在读取标题…' : '');
+      // 后台逐项补齐标题，不阻塞打开文章；正文同时进入客户端缓存。
+      let failed = 0;
+      void eachLimited(pending, async ({ item, name, button }) => {
+        if (version !== listVersion || client !== activeClient) return;
+        try {
+          const file = await activeClient.readPost(item.path, item.headSha);
+          const article = F.parseArticle(file.text, item.name);
+          if (version !== listVersion || client !== activeClient) return;
+          const title = article.title.trim() || '未命名文章';
+          titles.set(item.sha, title);
+          name.textContent = title; button.title = title + '\n' + item.path;
+        } catch {
+          if (version !== listVersion || client !== activeClient) return;
+          failed += 1;
+          name.textContent = '标题读取失败 · ' + item.name;
+          button.title = '点击尝试打开文章；也可以刷新重试。\n' + item.path;
+        }
+      }).then(() => {
+        if (version === listVersion && client === activeClient) $('remote-status').textContent = summary + (failed ? ' · ' + failed + ' 篇标题读取失败，可刷新重试' : '');
+      }).catch(() => { /* 单篇失败已保留重试入口。 */ });
     }
     async function refreshAfterWrite() {
       try { await refresh(); }
@@ -81,22 +117,25 @@
       return [...paths];
     }
     async function openPost(path) {
+      const activeClient = client;
+      const activeSettings = { ...settings };
       await editor.flush();
       editor.message('正在读取线上文章和图片…');
-      const file = await client.readPost(path);
+      const file = await activeClient.readPost(path);
       const article = F.parseArticle(file.text, path.split('/').pop());
       const assets = [];
       let failed = 0, total = 0;
-      for (const imagePath of sourceAssets(article.markdown)) {
+      await eachLimited(sourceAssets(article.markdown), async imagePath => {
         try {
-          const image = await client.getFile(imagePath, file.headSha);
+          const image = await activeClient.getFile(imagePath, file.headSha);
           if (image.bytes.length > 8 * 1024 * 1024 || total + image.bytes.length > 40 * 1024 * 1024) throw new Error('图片过大');
           total += image.bytes.length;
           const ext = imagePath.split('.').pop().toLowerCase();
           assets.push({ path: imagePath, remoteSha: image.sha, blob: new Blob([image.bytes], { type: /^jpe?g$/.test(ext) ? 'image/jpeg' : 'image/' + ext }) });
         } catch { failed += 1; }
-      }
-      await editor.openRemote(article, assets, { ...settings, path, sha: file.sha, commitSha: file.headSha });
+      });
+      if (client !== activeClient) return;
+      await editor.openRemote(article, assets, { ...activeSettings, path, sha: file.sha, commitSha: file.headSha });
       editor.message('已打开线上文章。本机草稿会自动保存，点“更新线上文章”才会提交。' + (failed ? ' 有 ' + failed + ' 张图片未能下载，原引用已保留。' : ''));
     }
     function validate(article) {
@@ -181,6 +220,7 @@
           $('connection-message').textContent = '正在验证连接…';
           const result = await candidate.verify();
           client?.disconnect(); client = candidate; candidate = null;
+          listVersion += 1; titles.clear();
           settings = next; identity = result.login;
           try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* 设置不能保存不影响连接。 */ }
           $('connect-dialog').close();
@@ -196,6 +236,7 @@
     });
     $('disconnect-button').addEventListener('click', () => {
       client?.disconnect(); client = null; identity = null; items = [];
+      listVersion += 1; titles.clear();
       $('remote-list').replaceChildren();
       $('remote-status').textContent = '连接后可读取、修改和删除文章。';
       $('connect-dialog').close();
