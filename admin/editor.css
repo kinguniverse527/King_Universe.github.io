@@ -28,6 +28,11 @@ h2 { font-size: 14px; font-weight: 600; margin: 0; line-height: 1.5; }
 .draft-item[aria-current="true"] { border-color: #bfcdbc; background: #e9eee4; }
 .draft-item strong { display: block; font-size: 12px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .draft-item[hidden] { display: none; }
+.draft-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.draft-row .draft-item { flex: 1; min-width: 0; }
+.draft-remove { flex: 0 0 auto; font-size: 11px; padding: 7px 5px; border-color: transparent; background: transparent; color: #9b3f35; }
+.draft-remove:hover { background: #faeae6; }
+@media (max-width: 560px) { .draft-row { flex: 0 0 200px; }.draft-row .draft-item { flex: 1; } }
 #remote-list .draft-item strong { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 #article-search { font-size: 12px; margin: 6px 0; }
 #search-status:empty { display: none; }

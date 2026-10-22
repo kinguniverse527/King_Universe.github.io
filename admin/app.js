@@ -28,6 +28,8 @@
   let saveQueue = Promise.resolve();
   let githubPanel = null;
   let remoteBusy = false;
+  let localBusy = false;
+  let pendingLocalDelete = null;
 
   // 编辑器只处理正文；元数据、附件、预览、持久化分别由其他模块负责。
   const editor = new V.Editor({
@@ -188,6 +190,7 @@
         const text = document.createElement('p'); text.className = 'subtle'; text.textContent = '还没有保存的草稿'; list.append(text);
       }
       for (const draft of drafts) {
+        const row = document.createElement('div'); row.className = 'draft-row'; row.dataset.draftId = draft.id;
         const button = document.createElement('button');
         button.className = 'draft-item'; button.type = 'button';
         button.setAttribute('aria-current', String(draft.id === current?.id));
@@ -195,7 +198,18 @@
         const date = document.createElement('small'); date.textContent = draft.article?.date || '';
         button.append(title, date);
         button.addEventListener('click', () => run(async () => { await beforeSwitch(); await openDraft(await DB.get(draft.id)); message('已打开本机草稿。'); }));
-        list.append(button);
+        const remove = document.createElement('button');
+        remove.type = 'button'; remove.className = 'draft-remove'; remove.textContent = '删除';
+        remove.setAttribute('aria-label', '删除本机草稿：' + (draft.article?.title || '未命名文章'));
+        remove.addEventListener('click', () => run(async () => {
+          await beforeSwitch();
+          const target = await DB.get(draft.id);
+          if (!target) { await refreshList(); return; }
+          pendingLocalDelete = target.id;
+          $('delete-local-description').textContent = '确定删除本机草稿“' + (target.article?.title || '未命名文章') + '”吗？';
+          $('delete-local-dialog').showModal();
+        }));
+        row.append(button, remove); list.append(row);
       }
     } catch (error) { message(error.message, true); }
   }
@@ -222,7 +236,14 @@
     });
     $('block-format').value = editor.isActive('heading', { level: 2 }) ? 'h2' : editor.isActive('heading', { level: 3 }) ? 'h3' : 'paragraph';
   }
-  function run(action) { if (remoteBusy) return; return Promise.resolve().then(action).catch(error => message(error.message || '操作未完成，请重试。', true)); }
+  function run(action) { if (remoteBusy || localBusy) return; return Promise.resolve().then(action).catch(error => message(error.message || '操作未完成，请重试。', true)); }
+  function updateBusy() {
+    const busy = remoteBusy || localBusy;
+    document.body.dataset.busy = String(busy);
+    document.querySelector('.workspace').inert = busy;
+    document.querySelector('.header-actions').inert = busy;
+    editor.setEditable(!busy, false);
+  }
   function download(name, data, type) {
     const url = URL.createObjectURL(new Blob([data], { type }));
     const link = document.createElement('a'); link.href = url; link.download = name; document.body.append(link); link.click(); link.remove();
@@ -282,6 +303,31 @@
   $('save-button').addEventListener('click', () => run(persist));
   $('export-button').addEventListener('click', () => run(exportArticle));
   $('new-button').addEventListener('click', () => run(async () => { await beforeSwitch(); await openDraft({ id: newId(), article: emptyArticle(), attachments: [] }); $('title').focus(); message('新文章已准备好。'); }));
+  $('cancel-delete-local').addEventListener('click', () => { if (!localBusy) $('delete-local-dialog').close(); });
+  $('delete-local-dialog').addEventListener('close', () => { pendingLocalDelete = null; });
+  $('delete-local-dialog').addEventListener('cancel', event => { if (localBusy) event.preventDefault(); });
+  $('confirm-delete-local').addEventListener('click', () => run(async () => {
+    const id = pendingLocalDelete;
+    if (!id) return;
+    localBusy = true; updateBusy();
+    $('confirm-delete-local').disabled = true; $('cancel-delete-local').disabled = true;
+    try {
+      // 等待自动保存真正结束，避免删除后排队中的保存再次写回同一草稿。
+      clearTimeout(saveTimer);
+      await beforeSwitch();
+      await DB.remove(id);
+      if (current?.id === id) await openDraft({ id: newId(), article: emptyArticle(), attachments: [] });
+      else await refreshList();
+      $('delete-local-dialog').close();
+      message('本机草稿已删除，GitHub 上的文章不受影响。');
+    } catch (error) {
+      $('delete-local-dialog').close();
+      message('删除本机草稿失败：' + (error.message || '请重试。'), true);
+    } finally {
+      localBusy = false; updateBusy();
+      $('confirm-delete-local').disabled = false; $('cancel-delete-local').disabled = false;
+    }
+  }));
   $('import-button').addEventListener('click', () => $('article-file').click());
   $('article-file').addEventListener('change', () => run(async () => { const file = $('article-file').files[0]; $('article-file').value = ''; if (file) await importFile(file); }));
   $('image-button').addEventListener('click', () => $('image-file').click());
@@ -323,7 +369,7 @@
     await openDraft({ id: newId(), article, attachments: [] });
     message('示例已打开。可以直接修改，或新建自己的文章。');
   }));
-  window.addEventListener('beforeunload', event => { if (dirty || remoteBusy) { event.preventDefault(); event.returnValue = ''; } });
+  window.addEventListener('beforeunload', event => { if (dirty || remoteBusy || localBusy) { event.preventDefault(); event.returnValue = ''; } });
   document.addEventListener('keydown', event => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); run(persist); } });
 
   try {
@@ -339,10 +385,7 @@
     message,
     setBusy(busy) {
       remoteBusy = busy;
-      document.body.dataset.busy = String(busy);
-      document.querySelector('.workspace').inert = busy;
-      document.querySelector('.header-actions').inert = busy;
-      editor.setEditable(!busy);
+      updateBusy();
     },
     async openRemote(article, assets, remote) {
       const existing = (await DB.list()).find(draft => draft.remote &&

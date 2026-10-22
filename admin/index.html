@@ -6,7 +6,7 @@
   <meta name="robots" content="noindex,nofollow">
   <title>写作室 · King_Universe</title>
   <link rel="stylesheet" href="../assets/css/typography.css">
-  <link rel="stylesheet" href="editor.css?v=20261023-1">
+  <link rel="stylesheet" href="editor.css?v=20261023-2">
   <script defer src="vendor/editor-vendor.js"></script>
   <script defer src="modules/article-files.js"></script>
   <script defer src="modules/draft-store.js"></script>
@@ -14,7 +14,7 @@
   <script defer src="modules/github-client.js?v=20261023-1"></script>
   <script defer src="modules/github-session.js?v=20261023-1"></script>
   <script defer src="modules/github-panel.js?v=20261023-1"></script>
-  <script defer src="app.js?v=20261023-1"></script>
+  <script defer src="app.js?v=20261023-2"></script>
 </head>
 <body>
   <header class="app-header">
@@ -119,6 +119,12 @@
     <p id="delete-description"></p>
     <p>将提交删除到 GitHub，网站完成部署后生效。本机草稿和图片保留。</p>
     <div class="dialog-actions"><button id="cancel-delete" type="button">取消</button><button id="confirm-delete" class="danger-button" type="button">确认删除这篇文章</button></div>
+  </dialog>
+  <dialog id="delete-local-dialog" aria-labelledby="delete-local-title" aria-describedby="delete-local-description delete-local-note">
+    <h2 id="delete-local-title">删除本机草稿</h2>
+    <p id="delete-local-description"></p>
+    <p id="delete-local-note">只删除此浏览器中的这份草稿及其附件，不会删除 GitHub 上的文章或图片。尚未发布的内容删除后无法恢复，需要保留请先取消并导出备份。</p>
+    <div class="dialog-actions"><button id="cancel-delete-local" type="button">取消</button><button id="confirm-delete-local" class="danger-button" type="button">删除本机草稿</button></div>
   </dialog>
   <dialog id="help-dialog">
     <h2>你的写作流程</h2>
