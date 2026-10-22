@@ -1,4 +1,4 @@
-/* GitHub 文章接口：令牌只留在当前连接的内存中；所有发布均为非强制的单次提交。 */
+/* GitHub 文章接口：支持公开仓库只读访问；所有发布均为非强制的单次提交。 */
 (function (root) {
   'use strict';
 
@@ -102,6 +102,7 @@
     const repo = options.repo;
     const branch = options.branch || 'main';
     let token = typeof options.token === 'string' ? options.token.trim() : '';
+    const readOnly = options.readOnly === true;
     const fetcher = options.fetch || (root.fetch && root.fetch.bind(root));
     if (typeof owner !== 'string' || typeof repo !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/.test(owner) || !/^[A-Za-z0-9_.-]{1,100}$/.test(repo) || repo === '.' || repo === '..') {
       throw failure('GitHub 用户名或仓库名称无效。', 'INVALID_REPOSITORY');
@@ -109,7 +110,7 @@
     if (typeof branch !== 'string' || !branch || branch.length > 250 || /[\x00-\x20\x7f~^:?*\[\\]/.test(branch) || branch.includes('..') || branch.includes('@{') || branch.endsWith('.') || branch.split('/').some(part => !part || part.startsWith('.') || part.endsWith('.lock'))) {
       throw failure('GitHub 分支名称无效。', 'INVALID_BRANCH');
     }
-    if (!token || /[\s\x00-\x1f\x7f]/.test(token)) throw failure('请填写有效的 GitHub 访问令牌。', 'INVALID_TOKEN');
+    if ((!token && !readOnly) || /[\s\x00-\x1f\x7f]/.test(token)) throw failure('请填写有效的 GitHub 访问令牌。', 'INVALID_TOKEN');
     if (typeof fetcher !== 'function') throw failure('当前浏览器不支持连接 GitHub。', 'FETCH_UNAVAILABLE');
 
     const prefix = '/repos/' + encodeURIComponent(owner) + '/' + encodeURIComponent(repo);
@@ -125,7 +126,8 @@
 
     // 不携带 cookie、不跟随重定向、不缓存响应；错误中不返回原始请求或令牌。
     async function request(method, path, body, finalWrite = false) {
-      if (disconnected || !token) throw failure('GitHub 连接已断开，请重新连接。', 'DISCONNECTED');
+      if (disconnected) throw failure('GitHub 连接已断开，请重新连接。', 'DISCONNECTED');
+      if (readOnly && (method !== 'GET' || path === '/user')) throw failure('请先连接 GitHub，再提交修改。', 'AUTH_REQUIRED');
       const controller = new AbortController();
       controllers.add(controller);
       let timedOut = false;
@@ -137,7 +139,7 @@
           method,
           headers: {
             Accept: 'application/vnd.github+json',
-            Authorization: 'Bearer ' + token,
+            ...(token ? { Authorization: 'Bearer ' + token } : {}),
             'X-GitHub-Api-Version': '2026-03-10',
             ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
           },
@@ -160,7 +162,7 @@
         const status = response.status;
         const remoteMessage = typeof data?.message === 'string' ? data.message : '';
         if (status === 429 || (status === 403 && (response.headers?.get('x-ratelimit-remaining') === '0' || response.headers?.get('retry-after') || /rate limit|abuse detection/i.test(remoteMessage)))) {
-          throw failure('GitHub 请求过于频繁，已达到访问频率限制。请稍后再试，不要连续点击提交。', 'RATE_LIMIT', status);
+          throw failure(readOnly ? '公开读取暂时达到 GitHub 的访问限额。连接 GitHub 后可继续读取，或稍后重试。' : 'GitHub 请求过于频繁，已达到访问频率限制。请稍后再试，不要连续点击提交。', 'RATE_LIMIT', status);
         }
         if (status === 401) throw failure('GitHub 令牌无效或已经过期，请重新连接。', 'UNAUTHORIZED', status);
         if (status === 403) throw failure('GitHub 拒绝访问。请检查令牌是否授权此仓库及 Contents 读写权限，并确认分支没有限制直接提交。', 'FORBIDDEN', status);
@@ -338,6 +340,7 @@
     }
 
     async function write(action) {
+      if (readOnly) throw failure('请先连接 GitHub，再提交修改。', 'AUTH_REQUIRED');
       if (writing) throw failure('已有提交正在处理中，请等待结果后再操作。', 'BUSY');
       if (disconnected) throw failure('GitHub 连接已断开，请重新连接。', 'DISCONNECTED');
       writing = true;

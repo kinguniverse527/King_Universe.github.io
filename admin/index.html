@@ -6,19 +6,20 @@
   <meta name="robots" content="noindex,nofollow">
   <title>写作室 · King_Universe</title>
   <link rel="stylesheet" href="../assets/css/typography.css">
-  <link rel="stylesheet" href="editor.css">
+  <link rel="stylesheet" href="editor.css?v=20261023-1">
   <script defer src="vendor/editor-vendor.js"></script>
   <script defer src="modules/article-files.js"></script>
   <script defer src="modules/draft-store.js"></script>
   <script defer src="modules/preview.js"></script>
-  <script defer src="modules/github-client.js?v=20261021-2"></script>
-  <script defer src="modules/github-panel.js?v=20261021-2"></script>
-  <script defer src="app.js"></script>
+  <script defer src="modules/github-client.js?v=20261023-1"></script>
+  <script defer src="modules/github-session.js?v=20261023-1"></script>
+  <script defer src="modules/github-panel.js?v=20261023-1"></script>
+  <script defer src="app.js?v=20261023-1"></script>
 </head>
 <body>
   <header class="app-header">
     <a class="wordmark" href="https://kinguniverse527.github.io/" target="_blank" rel="noopener">King_Universe<span> / 写作室</span></a>
-    <span id="connection-badge" class="local-badge">未连接 GitHub</span>
+    <span id="connection-badge" class="local-badge">公开文章 · 连接后可发布</span>
     <div class="header-actions">
       <button id="connect-button" type="button">连接 GitHub</button>
       <button id="import-button" type="button">打开文章</button>
@@ -29,14 +30,19 @@
   </header>
 
   <div class="workspace">
-    <aside class="draft-sidebar" aria-label="本机草稿">
-      <div class="sidebar-heading"><h2>草稿</h2><button id="new-button" class="icon-button" type="button" aria-label="新建文章">＋</button></div>
-      <p class="subtle">保存在当前浏览器</p>
-      <div id="draft-list" class="draft-list"></div>
+    <aside class="draft-sidebar" aria-label="全部文章与本机草稿">
       <section class="remote-section" aria-labelledby="remote-heading">
-        <div class="sidebar-heading"><h2 id="remote-heading">GitHub 文章</h2><button id="refresh-remote" class="text-button" type="button" disabled>刷新</button></div>
-        <p id="remote-status" class="remote-note">连接后可读取、修改和删除文章。</p>
+        <div class="sidebar-heading"><h2 id="remote-heading">全部文章</h2><button id="refresh-remote" class="text-button" type="button">刷新</button><button id="new-button" class="icon-button" type="button" aria-label="新建文章">＋</button></div>
+        <label for="article-search" class="remote-note">查找文章</label>
+        <input id="article-search" type="search" placeholder="标题、日期或正文" autocomplete="off">
+        <p id="remote-status" class="remote-note" role="status">正在读取文章列表…</p>
+        <p id="search-status" class="remote-note" role="status"></p>
         <div id="remote-list" class="draft-list"></div>
+      </section>
+      <section class="local-section" aria-labelledby="draft-heading">
+        <div class="sidebar-heading"><h2 id="draft-heading">本机草稿</h2></div>
+        <p class="subtle">保存在当前浏览器</p>
+        <div id="draft-list" class="draft-list"></div>
       </section>
       <button id="sample-button" class="text-button" type="button">打开示例文章</button>
       <p class="sidebar-tip">先写下来。<br>排版交给博客模板。</p>
@@ -94,16 +100,18 @@
   <input id="image-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
   <dialog id="connect-dialog" aria-labelledby="connect-title">
     <h2 id="connect-title">连接你的 GitHub 博客</h2>
-    <p>连接后可以直接读取文章、提交修改或删除文章。授权码只保留在本页内存中，刷新或关闭后需要重新连接。</p>
+    <p>公开文章可以直接浏览和编辑。连接 GitHub 后，即可发布、更新和删除文章。</p>
     <form id="connect-form" class="connection-form">
-      <div class="connection-fields"><label>GitHub 用户名<input id="github-owner" value="kinguniverse527" autocomplete="off" required></label><label>博客仓库<input id="github-repo" value="kinguniverse527.github.io" autocomplete="off" required></label><label>发布分支<input id="github-branch" value="main" autocomplete="off" required></label></div>
+      <details><summary>仓库设置（通常无需修改）</summary><div class="connection-fields"><label>GitHub 用户名<input id="github-owner" value="kinguniverse527" autocomplete="off" required></label><label>博客仓库<input id="github-repo" value="kinguniverse527.github.io" autocomplete="off" required></label><label>发布分支<input id="github-branch" value="main" autocomplete="off" required></label></div></details>
       <details id="token-guide" open>
         <summary>第一次使用：创建仓库专用授权码</summary>
         <ol><li>打开 <a id="create-token-link" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">GitHub 授权码设置</a>，按页面提示登录。</li><li>在 Repository access 选择 <strong>Only select repositories</strong>，只选你的博客仓库。</li><li>将 Repository permissions → <strong>Contents</strong> 设为 <strong>Read and write</strong>，选择有效期，然后生成。</li><li>把生成的授权码粘贴到下方。不要发到聊天或写入仓库文件。</li></ol>
       </details>
       <label for="github-token">仓库授权码（Fine-grained token）</label><input id="github-token" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_…" required>
+      <label class="remember-choice"><input id="remember-connection" type="checkbox">记住此浏览器，30 天内自动连接</label>
+      <p class="remote-note">仅在自己的设备上勾选。授权码会保存在此浏览器；退出会清除。授权过期或被撤销后需重新连接。不勾选则只保留本页连接。</p>
       <p id="connection-message" class="message" role="status"></p>
-      <div class="dialog-actions"><button id="disconnect-button" type="button" hidden>断开连接</button><button id="cancel-connect" type="button">关闭</button><button id="confirm-connect" type="submit" class="primary">连接仓库</button></div>
+      <div class="dialog-actions"><button id="disconnect-button" type="button" hidden>退出并忘记连接</button><button id="cancel-connect" type="button">关闭</button><button id="confirm-connect" type="submit" class="primary">连接仓库</button></div>
     </form>
   </dialog>
   <dialog id="delete-dialog" aria-labelledby="delete-title">
@@ -114,7 +122,7 @@
   </dialog>
   <dialog id="help-dialog">
     <h2>你的写作流程</h2>
-    <ol><li>连接 GitHub，打开左侧的线上文章，或点 ＋ 新建文章。</li><li>填写标题和摘要，用工具栏编辑正文，右侧查看排版。</li><li>草稿自动保存在当前浏览器；“保存草稿”不会发布。</li><li>点击“发布到博客”或“更新线上文章”，将文章和新图片一起提交。</li><li>等待 GitHub Pages 部署成功后，在博客查看。可以点击“查看部署进度”。</li></ol>
+    <ol><li>左侧自动读取公开仓库中的全部文章，可搜索标题、日期和正文。点击文章开始编辑，或点 ＋ 新建文章。</li><li>首次连接 GitHub 时，可勾选“记住此浏览器”，下次自动连接。</li><li>草稿自动保存在当前浏览器；“保存草稿”不会发布。同一线上版本再次打开时会恢复已有草稿。</li><li>点击“发布到博客”或“更新线上文章”，将文章和新图片一起提交。</li><li>等待 GitHub Pages 部署成功后，在博客查看。可以点击“查看部署进度”。</li></ol>
     <p>无图片时导出一份文章文件；有图片时导出压缩包，保留其中的文件夹结构。以后可直接重新打开这些文件继续编辑。</p>
     <p>浏览器草稿不是备份，清理浏览器数据或更换浏览器后可能无法找到。请及时导出重要文章。</p>
     <p>“导出备份”仍可离线使用。连接采用仓库专用授权码，不是 OAuth 跳转登录；授权码不会写入草稿或项目文件。</p>

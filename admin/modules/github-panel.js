@@ -3,6 +3,7 @@
   'use strict';
   const $ = id => document.getElementById(id);
   const F = root.BlogFiles;
+  const Session = root.BlogGitHubSession;
   const defaults = { owner: 'kinguniverse527', repo: 'kinguniverse527.github.io', branch: 'main' };
   const SETTINGS_KEY = 'king-universe-github-settings';
 
@@ -19,26 +20,28 @@
       const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null');
       for (const key of Object.keys(defaults)) if (typeof saved?.[key] === 'string') settings[key] = saved[key];
     } catch { /* 无本地设置时使用博客默认值。 */ }
-    let client = null;
+    let client = root.BlogGitHub.create({ ...settings, readOnly: true });
     let identity = null;
     let busy = false;
     let pendingDelete = null;
     let items = [];
     let listVersion = 0;
+    let connectionVersion = 0;
     const titles = new Map();
+    const searchTexts = new Map();
     for (const key of Object.keys(defaults)) $('github-' + key).value = settings[key];
 
     const sameRepository = remote => remote && remote.owner === settings.owner && remote.repo === settings.repo && remote.branch === settings.branch;
     function repositoryURL() { return 'https://github.com/' + encodeURIComponent(settings.owner) + '/' + encodeURIComponent(settings.repo); }
     function update() {
       const remote = editor.getDraft().remote;
-      $('connection-badge').textContent = client ? 'GitHub 已连接 · ' + identity : '未连接 GitHub';
-      $('connect-button').textContent = client ? '连接设置' : '连接 GitHub';
-      $('disconnect-button').hidden = !client;
+      $('connection-badge').textContent = identity ? 'GitHub 已连接 · ' + identity : '公开文章 · 连接后可发布';
+      $('connect-button').textContent = identity ? '账号设置' : '连接 GitHub';
+      $('disconnect-button').hidden = !identity && !Session.load();
       $('refresh-remote').disabled = !client || busy;
-      $('publish-button').disabled = !client || busy;
+      $('publish-button').disabled = !identity || busy;
       $('publish-button').textContent = remote && !remote.deleted ? '更新线上文章 ↗' : '发布到博客 ↗';
-      $('delete-remote').hidden = !(client && sameRepository(remote) && remote.sha && !remote.deleted && !remote.uncertain);
+      $('delete-remote').hidden = !(identity && sameRepository(remote) && remote.sha && !remote.deleted && !remote.uncertain);
       $('article-origin').textContent = remote ? (remote.deleted ? '已删除线上版本 · 本机草稿保留' : remote.uncertain ? '提交结果待确认 · 请重新打开线上版本核对' : '关联文章：' + remote.path) : '本机草稿 · 尚未关联线上文章';
     }
     async function perform(action) {
@@ -47,7 +50,13 @@
       editor.setBusy(true);
       $('connect-form').inert = true;
       try { await action(); }
-      catch (error) { editor.message(error.message || '操作未完成，请重试。', true); }
+      catch (error) {
+        if (error.code === 'UNAUTHORIZED' || error.status === 401) {
+          try { Session.clear(); } catch { /* 本次连接仍会失效。 */ }
+          usePublicClient();
+        }
+        editor.message(error.message || '操作未完成，请重试。', true);
+      }
       finally {
         busy = false;
         editor.setBusy(false);
@@ -59,6 +68,27 @@
       const params = new URLSearchParams({ name: '博客写作室', description: '仅供个人博客文章管理', target_name: $('github-owner').value.trim(), expires_in: '30', contents: 'write' });
       $('create-token-link').href = 'https://github.com/settings/personal-access-tokens/new?' + params;
     }
+    function usePublicClient() {
+      connectionVersion += 1; listVersion += 1;
+      client?.disconnect();
+      client = root.BlogGitHub.create({ ...settings, readOnly: true });
+      identity = null; items = []; titles.clear(); searchTexts.clear();
+      $('remote-list').replaceChildren();
+      update();
+    }
+    function filterPosts() {
+      const query = $('article-search').value.trim().toLocaleLowerCase();
+      const paths = new Map(items.map(item => [item.path, item]));
+      let count = 0;
+      for (const button of $('remote-list').children) {
+        const item = paths.get(button.dataset.path);
+        const text = item ? [item.path, titles.get(item.sha) || '', searchTexts.get(item.sha) || ''].join('\n') : '';
+        button.hidden = Boolean(query && !text.toLocaleLowerCase().includes(query));
+        if (!button.hidden) count += 1;
+      }
+      $('search-status').textContent = query ? '找到 ' + count + ' / ' + items.length + ' 篇文章' : '';
+    }
+    $('article-search').addEventListener('input', filterPosts);
     async function refresh() {
       const activeClient = client;
       const version = ++listVersion;
@@ -81,6 +111,7 @@
         if (!titles.has(item.sha)) pending.push({ item, name, button });
       }
       $('remote-status').textContent = summary + (pending.length ? ' · 正在读取标题…' : '');
+      filterPosts();
       // 后台逐项补齐标题，不阻塞打开文章；正文同时进入客户端缓存。
       let failed = 0;
       void eachLimited(pending, async ({ item, name, button }) => {
@@ -91,7 +122,9 @@
           if (version !== listVersion || client !== activeClient) return;
           const title = article.title.trim() || '未命名文章';
           titles.set(item.sha, title);
+          searchTexts.set(item.sha, article.markdown + '\n' + article.description);
           name.textContent = title; button.title = title + '\n' + item.path;
+          filterPosts();
         } catch {
           if (version !== listVersion || client !== activeClient) return;
           failed += 1;
@@ -135,8 +168,8 @@
         } catch { failed += 1; }
       });
       if (client !== activeClient) return;
-      await editor.openRemote(article, assets, { ...activeSettings, path, sha: file.sha, commitSha: file.headSha });
-      editor.message('已打开线上文章。本机草稿会自动保存，点“更新线上文章”才会提交。' + (failed ? ' 有 ' + failed + ' 张图片未能下载，原引用已保留。' : ''));
+      const restored = await editor.openRemote(article, assets, { ...activeSettings, path, sha: file.sha, commitSha: file.headSha });
+      editor.message((restored ? '已恢复这篇文章的本机草稿，保留尚未提交的修改。' : '已打开线上文章。本机草稿会自动保存。') + (identity ? '点“更新线上文章”才会提交。' : '连接 GitHub 后即可提交修改。') + (failed ? ' 有 ' + failed + ' 张图片未能下载，原引用已保留。' : ''));
     }
     function validate(article) {
       const errors = F.validateArticle(article);
@@ -155,7 +188,7 @@
       catch { return false; }
     }
     async function publish() {
-      if (!client) throw new Error('请先连接 GitHub。');
+      if (!identity) throw new Error('请先连接 GitHub。');
       await editor.flush();
       const draft = editor.getDraft();
       validate(draft.article);
@@ -181,7 +214,7 @@
     }
     async function removePost() {
       const draft = editor.getDraft();
-      if (!client || !sameRepository(draft.remote) || !draft.remote.sha || draft.remote.deleted) throw new Error('请先打开要删除的线上文章。');
+      if (!identity || !sameRepository(draft.remote) || !draft.remote.sha || draft.remote.deleted) throw new Error('请先打开要删除的线上文章。');
       pendingDelete = { ...draft.remote, draftId: draft.id };
       $('delete-description').textContent = '将从 ' + settings.owner + '/' + settings.repo + '（' + settings.branch + '）删除：' + draft.article.title + '，文件 ' + draft.remote.path;
       $('delete-dialog').showModal();
@@ -204,7 +237,12 @@
       });
     });
     $('cancel-delete').addEventListener('click', () => { pendingDelete = null; $('delete-dialog').close(); });
-    $('connect-button').addEventListener('click', () => { setupLink(); $('connection-message').textContent = ''; $('connect-dialog').showModal(); });
+    $('connect-button').addEventListener('click', () => {
+      setupLink(); $('connection-message').textContent = '';
+      $('remember-connection').checked = Boolean(Session.load());
+      $('token-guide').open = !identity && !Session.load();
+      $('connect-dialog').showModal();
+    });
     $('cancel-connect').addEventListener('click', () => $('connect-dialog').close());
     $('connect-dialog').addEventListener('close', () => { $('github-token').value = ''; });
     $('connect-dialog').addEventListener('cancel', event => { if (busy) event.preventDefault(); });
@@ -212,40 +250,89 @@
     $('connect-form').addEventListener('submit', event => {
       event.preventDefault();
       perform(async () => {
+        const version = ++connectionVersion;
         const next = Object.fromEntries(Object.keys(defaults).map(key => [key, $('github-' + key).value.trim()]));
+        let credential = $('github-token').value.trim();
         let candidate;
         try {
-          candidate = root.BlogGitHub.create({ ...next, token: $('github-token').value.trim() });
+          candidate = root.BlogGitHub.create({ ...next, token: credential });
           $('github-token').value = '';
           $('connection-message').textContent = '正在验证连接…';
           const result = await candidate.verify();
+          if (version !== connectionVersion) { candidate.disconnect(); return; }
           client?.disconnect(); client = candidate; candidate = null;
-          listVersion += 1; titles.clear();
+          listVersion += 1; titles.clear(); searchTexts.clear();
           settings = next; identity = result.login;
+          let storageMessage = '';
+          try {
+            if ($('remember-connection').checked) Session.save(credential, settings);
+            else Session.clear();
+          } catch { storageMessage = ' 浏览器未能更新连接记忆；本次仍可使用，请检查浏览器存储设置。'; }
           try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* 设置不能保存不影响连接。 */ }
           $('connect-dialog').close();
           update();
-          editor.message('已连接 ' + settings.owner + '/' + settings.repo + '（' + settings.branch + '）。');
+          editor.message('已连接 ' + settings.owner + '/' + settings.repo + '（' + settings.branch + '）。' + storageMessage);
           await refresh();
         } catch (error) {
           candidate?.disconnect();
           $('connection-message').textContent = error.message;
           throw error;
-        } finally { $('github-token').value = ''; }
+        } finally { credential = ''; $('github-token').value = ''; }
       });
     });
     $('disconnect-button').addEventListener('click', () => {
-      client?.disconnect(); client = null; identity = null; items = [];
-      listVersion += 1; titles.clear();
-      $('remote-list').replaceChildren();
-      $('remote-status').textContent = '连接后可读取、修改和删除文章。';
+      let cleared = true;
+      try { Session.clear(); } catch { cleared = false; }
+      usePublicClient();
+      $('remember-connection').checked = false;
       $('connect-dialog').close();
-      update(); editor.message('已断开 GitHub，本机草稿保留。');
+      editor.message(cleared ? '已退出并忘记连接。仍可浏览公开文章，本机草稿保留。' : '已断开本页连接，但浏览器未能清除保存的授权。请清除此网站的连接存储或在 GitHub 撤销授权。', !cleared);
+      void refresh().catch(error => { $('remote-status').textContent = error.message; });
     });
-    $('refresh-remote').addEventListener('click', () => perform(refresh));
+    $('refresh-remote').addEventListener('click', () => perform(async () => {
+      try { await refresh(); } catch (error) { $('remote-status').textContent = error.message; throw error; }
+    }));
     $('publish-button').addEventListener('click', () => perform(publish));
     $('delete-remote').addEventListener('click', () => perform(removePost));
+    root.addEventListener('storage', event => {
+      if ((event.key === Session.key || event.key === null) && event.newValue === null && identity) {
+        usePublicClient();
+        editor.message('另一窗口已退出连接。本机草稿保留。');
+        void refresh().catch(error => { $('remote-status').textContent = error.message; });
+      }
+    });
     update(); setupLink();
+    async function initialize() {
+      const version = connectionVersion;
+      const saved = Session.load();
+      let candidate;
+      try {
+        if (saved && Object.keys(defaults).every(key => saved.settings[key] === settings[key])) {
+          $('connection-badge').textContent = '正在恢复 GitHub 连接…';
+          candidate = root.BlogGitHub.create({ ...saved.settings, token: saved.token });
+          try {
+            const result = await candidate.verify();
+            if (version !== connectionVersion) { candidate.disconnect(); return; }
+            client.disconnect(); client = candidate; candidate = null; identity = result.login;
+            $('remember-connection').checked = true;
+          } catch (error) {
+            candidate?.disconnect(); candidate = null;
+            if (version !== connectionVersion) return;
+            if (error.code === 'UNAUTHORIZED' || error.status === 401) {
+              try { Session.clear(); } catch { /* 可在连接窗口退出。 */ }
+              editor.message('保存的授权已失效，请重新连接 GitHub；仍可浏览公开文章。', true);
+            } else editor.message('暂未恢复 GitHub 连接，可稍后重试；正在尝试读取公开文章。', true);
+          }
+        }
+        if (version !== connectionVersion) return;
+        update();
+        await refresh();
+      } catch (error) {
+        candidate?.disconnect();
+        if (version === connectionVersion) $('remote-status').textContent = error.message || '文章读取失败，请点刷新重试。';
+      }
+    }
+    void initialize();
     return { update };
   }
   root.BlogGitHubPanel = { mount };

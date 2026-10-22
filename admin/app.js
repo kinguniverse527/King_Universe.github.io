@@ -345,9 +345,17 @@
       editor.setEditable(!busy);
     },
     async openRemote(article, assets, remote) {
+      const existing = (await DB.list()).find(draft => draft.remote &&
+        ['owner', 'repo', 'branch', 'path', 'sha'].every(key => draft.remote[key] === remote[key]) &&
+        !draft.remote.uncertain && !draft.remote.deleted);
+      if (existing) {
+        await openDraft(existing);
+        return true;
+      }
       await openDraft({ id: newId(), article, attachments: assets, remote });
       dirty = true;
       await persist();
+      return false;
     },
     async updateRemote(remote) {
       current.remote = remote;
