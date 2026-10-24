@@ -7,9 +7,7 @@ description: A valuable idea in swimming
 >
 > 我们要做的，就是记录下这几个有价值的想法。
 
-
-
-我要做什么样的人，
+**我要做什么样的人，**
 
 这是一个开放性很强的问题
 
@@ -27,7 +25,7 @@ description: A valuable idea in swimming
 
 不用考虑外界的影响，做自己想做的事情
 
-
+---
 
 我想到的：
 
