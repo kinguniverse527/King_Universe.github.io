@@ -1,5 +1,5 @@
 ---
-title: 游泳小记
+title: 游泳后小记
 date: 2026-10-23 00:00:00 +0800
 description: A valuable idea in swimming
 ---
